@@ -22,8 +22,6 @@ namespace {
 
 GW::HookEntry ChatCmd_HookEntry;
 
-// Indexed by GW::Constants::HeroID (Constants.h). Names are the canonical
-// English hero names as used by gw1-mcp / the wiki.
 std::string WStringToUtf8(const wchar_t* wstr)
 {
     if (!wstr || !*wstr) {
@@ -33,10 +31,6 @@ std::string WStringToUtf8(const wchar_t* wstr)
     if (needed <= 1) {
         return {};
     }
-    // Allocate the full size including the terminal NUL slot: WideCharToMultiByte
-    // writes `needed` bytes (payload + NUL), so a `needed - 1` buffer wrote one
-    // byte past size() — undefined behavior. Size to `needed`, then trim the NUL.
-    // (audit GW1-03)
     std::string out(static_cast<size_t>(needed), '\0');
     const int written = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, out.data(), needed, nullptr, nullptr);
     if (written <= 0) {
@@ -59,7 +53,7 @@ std::vector<uint32_t> CopyWords(const GwArray& bitfield)
     return words;
 }
 
-void ExportAccount(GW::HookStatus*, const wchar_t*, int, const LPWSTR*)
+void ExportTitles(GW::HookStatus*, const wchar_t*, int, const LPWSTR*)
 {
     const auto* world = GW::GetWorldContext();
     const auto* account = GW::GetAccountContext();
@@ -68,12 +62,10 @@ void ExportAccount(GW::HookStatus*, const wchar_t*, int, const LPWSTR*)
 
     if (!world || !account || !character || !player) {
         GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_WARNING,
-                            L"[AccountExport] Not in game yet - load a character first.", nullptr, true);
+                            L"[GWST Export] Not in game yet - load a character first.", nullptr, true);
         return;
     }
 
-    // Fill the plain snapshot from game memory; ALL document assembly lives
-    // in the pure, unit-tested BuildAccountJson (AccountExportCore.h).
     account_export::AccountSnapshot snapshot;
     snapshot.character_name_utf8 = WStringToUtf8(character->player_name);
     snapshot.primary_profession_id = static_cast<uint32_t>(player->primary);
@@ -102,7 +94,7 @@ void ExportAccount(GW::HookStatus*, const wchar_t*, int, const LPWSTR*)
 
     wchar_t message[128];
     swprintf(message, _countof(message),
-             L"[AccountExport] Account export copied to clipboard (%zu heroes). Paste it to your assistant.",
+             L"[GWST Export] Export copied to clipboard (%zu heroes).",
              snapshot.heroes.size());
     GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_GLOBAL, message, nullptr, true);
 }
@@ -118,7 +110,7 @@ DLLAPI ToolboxPlugin* ToolboxPluginInstance()
 void AccountExport::Initialize(ImGuiContext* ctx, const ImGuiAllocFns allocator_fns, const HMODULE toolbox_dll)
 {
     ToolboxPlugin::Initialize(ctx, allocator_fns, toolbox_dll);
-    GW::Chat::CreateCommand(&ChatCmd_HookEntry, L"exportaccount", ExportAccount);
+    GW::Chat::CreateCommand(&ChatCmd_HookEntry, L"exporttitles", ExportTitles);
 }
 
 void AccountExport::SignalTerminate()

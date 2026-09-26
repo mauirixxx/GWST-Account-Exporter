@@ -14,12 +14,17 @@
 #include <GWCA/Managers/PlayerMgr.h>
 #include <GWCA/Utilities/Hook.h>
 #include <imgui.h>
+#include <windows.h>
+#include <fstream>
+#include <filesystem>
 #include <string>
 #include <vector>
 namespace {
 GW::HookEntry ChatCmd_HookEntry;
 std::string WStringToUtf8(const wchar_t* wstr){if(!wstr||!*wstr)return{};const int n=WideCharToMultiByte(CP_UTF8,0,wstr,-1,nullptr,0,nullptr,nullptr);if(n<=1)return{};std::string out(static_cast<size_t>(n),'\0');const int written=WideCharToMultiByte(CP_UTF8,0,wstr,-1,out.data(),n,nullptr,nullptr);if(written<=0)return{};out.resize(static_cast<size_t>(written)-1);return out;}
 template<typename A>std::vector<uint32_t> CopyWords(const A&a){std::vector<uint32_t>w;if(a.valid()){w.reserve(a.size());for(uint32_t i=0;i<a.size();i++)w.push_back(a[i]);}return w;}
+std::filesystem::path ExportPath(){wchar_t docs[MAX_PATH]{};const DWORD n=GetEnvironmentVariableW(L"USERPROFILE",docs,MAX_PATH);std::filesystem::path base=(n>0&&n<MAX_PATH)?std::filesystem::path(docs):std::filesystem::current_path();base/=L"Documents";base/=L"GWToolboxpp";base/=L"Exports";std::error_code ec;std::filesystem::create_directories(base,ec);return base/L"GWST-Titles.json";}
+bool WriteJsonFile(const std::filesystem::path& path,const std::string& json){std::ofstream file(path,std::ios::binary|std::ios::trunc);if(!file)return false;file.write(json.data(),static_cast<std::streamsize>(json.size()));return file.good();}
 void ExportTitles(GW::HookStatus*,const wchar_t*,int,const LPWSTR*){
  const auto* world=GW::GetWorldContext();const auto* account=GW::GetAccountContext();const auto* character=GW::GetCharContext();const auto* player=GW::Agents::GetControlledCharacter();
  if(!world||!account||!character||!player){GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_WARNING,L"[GWST Export] Not in game yet - load a character first.",nullptr,true);return;}
@@ -27,7 +32,7 @@ void ExportTitles(GW::HookStatus*,const wchar_t*,int,const LPWSTR*){
  for(uint32_t i=0;i<static_cast<uint32_t>(GW::Constants::TitleID::None);i++){const auto id=static_cast<GW::Constants::TitleID>(i);GW::Title* t=GW::PlayerMgr::GetTitleTrack(id);if(!t)continue;uint32_t current_rank=0,next_rank=0;if(world->title_tiers.valid()){if(t->current_title_tier_index<world->title_tiers.size())current_rank=world->title_tiers[t->current_title_tier_index].tier_number;if(t->next_title_tier_index<world->title_tiers.size())next_rank=world->title_tiers[t->next_title_tier_index].tier_number;}s.titles.push_back({i,t->current_points,t->current_title_tier_index,t->points_needed_current_rank,t->next_title_tier_index,t->points_needed_next_rank,t->max_title_rank,t->max_title_tier_index,current_rank,next_rank,t->is_percentage_based(),t->has_tiers()});}
  const auto& heroes=world->hero_info;if(heroes.valid()){s.heroes.reserve(heroes.size());for(uint32_t i=0;i<heroes.size();i++){const GW::HeroInfo&h=heroes[i];s.heroes.push_back({static_cast<uint32_t>(h.hero_id),h.level,static_cast<uint32_t>(h.primary),static_cast<uint32_t>(h.secondary)});}}
  s.unlocked_account_skills=CopyWords(account->unlocked_account_skills);s.learned_character_skills=CopyWords(world->unlocked_character_skills);
- const std::string json=account_export::BuildAccountJson(s);ImGui::SetClipboardText(json.c_str());wchar_t message[160];swprintf(message,_countof(message),L"[GWST Export] Title export v3 copied to clipboard (%zu title tracks).",s.titles.size());GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_GLOBAL,message,nullptr,true);
+ const std::string json=account_export::BuildAccountJson(s);ImGui::SetClipboardText(json.c_str());const auto path=ExportPath();const bool wrote=WriteJsonFile(path,json);wchar_t message[512];if(wrote)swprintf(message,_countof(message),L"[GWST Export] Title JSON copied to clipboard and saved to %ls (%zu title tracks).",path.c_str(),s.titles.size());else swprintf(message,_countof(message),L"[GWST Export] Title JSON copied to clipboard, but file save FAILED: %ls",path.c_str());GW::Chat::WriteChat(wrote?GW::Chat::Channel::CHANNEL_GLOBAL:GW::Chat::Channel::CHANNEL_WARNING,message,nullptr,true);
 }}
 DLLAPI ToolboxPlugin* ToolboxPluginInstance(){static AccountExport instance;return &instance;}
 void AccountExport::Initialize(ImGuiContext*ctx,const ImGuiAllocFns allocator_fns,const HMODULE toolbox_dll){ToolboxPlugin::Initialize(ctx,allocator_fns,toolbox_dll);GW::Chat::CreateCommand(&ChatCmd_HookEntry,L"exporttitles",ExportTitles);}

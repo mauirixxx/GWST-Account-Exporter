@@ -1,0 +1,76 @@
+name: Build GWST Account Exporter
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/**
+      - fix/**
+    paths:
+      - plugin/**
+      - .github/workflows/build-gwtoolbox-plugin.yml
+      - .github/pins.env
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load upstream pins
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/pins.env >> "$GITHUB_ENV"
+
+      - name: Checkout GWToolboxpp
+        shell: bash
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/gwdevhub/GWToolboxpp.git GWToolboxpp
+          cd GWToolboxpp
+          git checkout "$GWTOOLBOX_COMMIT"
+
+      - name: Inject plugin
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse plugin/AccountExport GWToolboxpp/plugins/AccountExport
+          Add-Content GWToolboxpp/cmake/gwtoolboxdll_plugins.cmake "`nadd_tb_plugin(AccountExport)"
+
+      - name: Install vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          git checkout "$VCPKG_COMMIT"
+          ./bootstrap-vcpkg.bat
+
+      - name: Set VCPKG_ROOT
+        shell: powershell
+        run: echo "VCPKG_ROOT=${{ github.workspace }}\\vcpkg" >> $env:GITHUB_ENV
+
+      - name: Configure CMake
+        shell: bash
+        working-directory: GWToolboxpp
+        run: cmake . --preset=vcpkg
+
+      - name: Build AccountExport
+        shell: bash
+        working-directory: GWToolboxpp
+        run: cmake --build build --config RelWithDebInfo --target AccountExport
+
+      - name: Collect artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Get-ChildItem -Recurse GWToolboxpp/bin -Include AccountExport.dll, AccountExport.pdb | Copy-Item -Destination out
+          Get-ChildItem out
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GWST-Account-Exporter
+          path: out/
+          if-no-files-found: error

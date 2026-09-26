@@ -61,16 +61,20 @@ jobs:
         working-directory: GWToolboxpp
         run: cmake --build build --config RelWithDebInfo --target AccountExport
 
-      - name: Collect artifact
+      - name: Collect artifact as TitlesExport.dll
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
-          Get-ChildItem -Recurse GWToolboxpp/bin -Include AccountExport.dll, AccountExport.pdb | Copy-Item -Destination out
+          $dll = Get-ChildItem -Recurse GWToolboxpp/bin -Filter AccountExport.dll | Select-Object -First 1
+          if (-not $dll) { throw "AccountExport.dll was not produced" }
+          Copy-Item $dll.FullName out/TitlesExport.dll
+          $pdb = Get-ChildItem -Recurse GWToolboxpp/bin -Filter AccountExport.pdb | Select-Object -First 1
+          if ($pdb) { Copy-Item $pdb.FullName out/TitlesExport.pdb }
           Get-ChildItem out
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GWST-Account-Exporter
+          name: TitlesExport
           path: out/
           if-no-files-found: error

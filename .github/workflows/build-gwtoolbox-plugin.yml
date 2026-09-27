@@ -1,4 +1,4 @@
-name: Build GWST Account Exporter
+name: Build GWTTT Titles Exporter
 
 on:
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
         working-directory: GWToolboxpp
         run: cmake . --preset=vcpkg
 
-      - name: Build AccountExport
+      - name: Build title exporter
         shell: bash
         working-directory: GWToolboxpp
         run: cmake --build build --config RelWithDebInfo --target AccountExport
@@ -75,6 +75,6 @@ jobs:
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TitlesExport
+          name: GWTTT-TitlesExport
           path: out/
           if-no-files-found: error

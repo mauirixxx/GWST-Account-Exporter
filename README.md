@@ -1,38 +1,62 @@
-# GWST Account Exporter
+# GWTTT Account Exporter
 
-Read-only Guild Wars 1 / GWToolbox++ plugin for exporting account and character state for GWST.
+A read-only Guild Wars 1 plugin for [GWToolbox++](https://www.gwtoolbox.com/) that exports Guild Wars title progress for easy import into [GWTTT](https://github.com/mauirixxx/gwttt).
 
-## Current command
+The exporter reads the currently loaded character's title tracks through GWToolbox/GWCA and includes both **character-specific** and **account-wide** title progress in the export. It does not modify Guild Wars data.
 
-`/exportaccount`
+## Requirements
 
-The initial version exports the currently loaded character, professions, level, map ID, unlocked heroes, account-unlocked skills, and character-learned skills to JSON on the clipboard.
+- Guild Wars 1
+- GWToolbox++
+- `TitlesExport.dll` from this repository's GitHub Actions build
 
-## Build
+GWToolbox++ is only required for the exporter plugin. It is not required to use GWTTT itself.
 
-GitHub Actions builds the plugin. Open **Actions → Build GWST Account Exporter** and run the workflow manually, or push changes under `plugin/`.
+## Installation
 
-The artifact is named `GWST-Account-Exporter` and contains `AccountExport.dll`.
+Download `TitlesExport.dll` from the latest successful GitHub Actions build artifact and place it in your GWToolbox plugins directory. A typical installation is:
 
-Install the DLL in:
+`%USERPROFILE%\Documents\GWToolboxpp\<computername>\plugins`
 
-`%LOCALAPPDATA%\GWToolboxpp\<computername>\plugins`
+The exact GWToolbox data location can vary, including when Windows/OneDrive redirects the Documents folder. Use the plugins directory belonging to the GWToolbox installation/profile you actually run.
 
-Then enable it under GWToolbox **Settings → Plugins**.
+Start Guild Wars and GWToolbox++, then enable the plugin under **GWToolbox → Settings → Plugins**.
 
-## Planned GWST extensions
+## Exporting titles
 
-- opaque Guild Wars account UUID
-- title tracks and title points
-- mission and bonus completion, including Hard Mode
-- vanquished areas
-- unlocked maps/outposts
-- faction totals
-- experience and skill points
-- other useful character/account progression
+Load the Guild Wars character whose character-specific titles you want to export, then enter:
 
-The exporter will deliberately avoid account email and password data.
+`/exporttitles`
+
+The plugin:
+
+- reads the available title tracks for the currently loaded character;
+- includes both character-specific and account-wide title progress;
+- copies the JSON export to the Windows clipboard; and
+- saves the same data as a timestamped file named `GWTTT-Titles-YYYY-MM-DD_HH-MM-SS.json` under the GWToolbox `Exports` folder in Documents.
+
+The timestamp prevents later exports from overwriting earlier ones, so the files can also serve as a simple progression history.
+
+GWToolbox chat reports the path of the saved file after a successful export.
+
+## Importing into GWTTT
+
+Sign in to GWTTT, open **Preferences**, and use **Import Guild Wars titles** to select the exported JSON file. GWTTT previews the changes before applying them and routes account-wide and character-specific title progress to the appropriate records.
+
+The importer uses stable GWCA title IDs rather than depending on GWTTT's display names, so GWTTT can retain customized title names without breaking imports.
+
+## Building
+
+GitHub Actions builds the plugin automatically for changes under `plugin/` and can also be run manually from the repository's **Actions** tab.
+
+The workflow publishes an artifact named `TitlesExport` containing `TitlesExport.dll` (and a PDB when available).
+
+Internally, the source/build target retains the upstream `AccountExport` name because the plugin was bootstrapped from that implementation; the distributable DLL is renamed to `TitlesExport.dll` by the build workflow.
+
+## Privacy and scope
+
+The exporter is intentionally read-only. It exports game progression data needed for GWTTT title tracking and does not export Guild Wars account e-mail addresses or passwords.
 
 ## Attribution
 
-The bootstrap exporter derives from Graphmaxer's MIT-licensed `gw1-mcp` AccountExport plugin. See LICENSE.
+The plugin was bootstrapped from Graphmaxer's MIT-licensed `gw1-mcp` AccountExport plugin and uses GWToolbox++/GWCA interfaces. See `LICENSE` for the repository's license and attribution.

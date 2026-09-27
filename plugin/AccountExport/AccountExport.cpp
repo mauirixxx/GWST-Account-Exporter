@@ -1,6 +1,5 @@
 #include "AccountExport.h"
 #include "AccountExportCore.h"
-
 #include <GWCA/Constants/Constants.h>
 #include <GWCA/Context/AccountContext.h>
 #include <GWCA/Context/CharContext.h>
@@ -8,121 +7,34 @@
 #include <GWCA/GameContainers/Array.h>
 #include <GWCA/GameEntities/Agent.h>
 #include <GWCA/GameEntities/Hero.h>
+#include <GWCA/GameEntities/Title.h>
 #include <GWCA/Managers/AgentMgr.h>
 #include <GWCA/Managers/ChatMgr.h>
 #include <GWCA/Managers/MapMgr.h>
+#include <GWCA/Managers/PlayerMgr.h>
 #include <GWCA/Utilities/Hook.h>
-
 #include <imgui.h>
-
+#include <windows.h>
+#include <fstream>
+#include <filesystem>
 #include <string>
 #include <vector>
-
 namespace {
-
 GW::HookEntry ChatCmd_HookEntry;
-
-// Indexed by GW::Constants::HeroID (Constants.h). Names are the canonical
-// English hero names as used by gw1-mcp / the wiki.
-std::string WStringToUtf8(const wchar_t* wstr)
-{
-    if (!wstr || !*wstr) {
-        return {};
-    }
-    const int needed = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
-    if (needed <= 1) {
-        return {};
-    }
-    // Allocate the full size including the terminal NUL slot: WideCharToMultiByte
-    // writes `needed` bytes (payload + NUL), so a `needed - 1` buffer wrote one
-    // byte past size() — undefined behavior. Size to `needed`, then trim the NUL.
-    // (audit GW1-03)
-    std::string out(static_cast<size_t>(needed), '\0');
-    const int written = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, out.data(), needed, nullptr, nullptr);
-    if (written <= 0) {
-        return {};
-    }
-    out.resize(static_cast<size_t>(written) - 1);
-    return out;
-}
-
-template <typename GwArray>
-std::vector<uint32_t> CopyWords(const GwArray& bitfield)
-{
-    std::vector<uint32_t> words;
-    if (bitfield.valid()) {
-        words.reserve(bitfield.size());
-        for (uint32_t i = 0; i < bitfield.size(); i++) {
-            words.push_back(bitfield[i]);
-        }
-    }
-    return words;
-}
-
-void ExportAccount(GW::HookStatus*, const wchar_t*, int, const LPWSTR*)
-{
-    const auto* world = GW::GetWorldContext();
-    const auto* account = GW::GetAccountContext();
-    const auto* character = GW::GetCharContext();
-    const auto* player = GW::Agents::GetControlledCharacter();
-
-    if (!world || !account || !character || !player) {
-        GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_WARNING,
-                            L"[AccountExport] Not in game yet - load a character first.", nullptr, true);
-        return;
-    }
-
-    // Fill the plain snapshot from game memory; ALL document assembly lives
-    // in the pure, unit-tested BuildAccountJson (AccountExportCore.h).
-    account_export::AccountSnapshot snapshot;
-    snapshot.character_name_utf8 = WStringToUtf8(character->player_name);
-    snapshot.primary_profession_id = static_cast<uint32_t>(player->primary);
-    snapshot.secondary_profession_id = static_cast<uint32_t>(player->secondary);
-    snapshot.level = player->level;
-    snapshot.map_id = static_cast<uint32_t>(GW::Map::GetMapID());
-
-    const auto& heroes = world->hero_info;
-    if (heroes.valid()) {
-        snapshot.heroes.reserve(heroes.size());
-        for (uint32_t i = 0; i < heroes.size(); i++) {
-            const GW::HeroInfo& hero = heroes[i];
-            snapshot.heroes.push_back({
-                static_cast<uint32_t>(hero.hero_id),
-                hero.level,
-                static_cast<uint32_t>(hero.primary),
-                static_cast<uint32_t>(hero.secondary),
-            });
-        }
-    }
-    snapshot.unlocked_account_skills = CopyWords(account->unlocked_account_skills);
-    snapshot.learned_character_skills = CopyWords(world->unlocked_character_skills);
-
-    const std::string json = account_export::BuildAccountJson(snapshot);
-    ImGui::SetClipboardText(json.c_str());
-
-    wchar_t message[128];
-    swprintf(message, _countof(message),
-             L"[AccountExport] Account export copied to clipboard (%zu heroes). Paste it to your assistant.",
-             snapshot.heroes.size());
-    GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_GLOBAL, message, nullptr, true);
-}
-
-} // namespace
-
-DLLAPI ToolboxPlugin* ToolboxPluginInstance()
-{
-    static AccountExport instance;
-    return &instance;
-}
-
-void AccountExport::Initialize(ImGuiContext* ctx, const ImGuiAllocFns allocator_fns, const HMODULE toolbox_dll)
-{
-    ToolboxPlugin::Initialize(ctx, allocator_fns, toolbox_dll);
-    GW::Chat::CreateCommand(&ChatCmd_HookEntry, L"exportaccount", ExportAccount);
-}
-
-void AccountExport::SignalTerminate()
-{
-    ToolboxPlugin::SignalTerminate();
-    GW::Chat::DeleteCommand(&ChatCmd_HookEntry);
-}
+std::string WStringToUtf8(const wchar_t* wstr){if(!wstr||!*wstr)return{};const int n=WideCharToMultiByte(CP_UTF8,0,wstr,-1,nullptr,0,nullptr,nullptr);if(n<=1)return{};std::string out(static_cast<size_t>(n),'\0');const int written=WideCharToMultiByte(CP_UTF8,0,wstr,-1,out.data(),n,nullptr,nullptr);if(written<=0)return{};out.resize(static_cast<size_t>(written)-1);return out;}
+template<typename A>std::vector<uint32_t> CopyWords(const A&a){std::vector<uint32_t>w;if(a.valid()){w.reserve(a.size());for(uint32_t i=0;i<a.size();i++)w.push_back(a[i]);}return w;}
+std::filesystem::path ExportPath(){wchar_t docs[MAX_PATH]{};const DWORD n=GetEnvironmentVariableW(L"USERPROFILE",docs,MAX_PATH);std::filesystem::path base=(n>0&&n<MAX_PATH)?std::filesystem::path(docs):std::filesystem::current_path();base/=L"Documents";base/=L"GWToolboxpp";base/=L"Exports";std::error_code ec;std::filesystem::create_directories(base,ec);SYSTEMTIME st{};GetLocalTime(&st);wchar_t filename[96]{};swprintf(filename,_countof(filename),L"GWTTT-Titles-%04u-%02u-%02u_%02u-%02u-%02u.json",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);return base/filename;}
+bool WriteJsonFile(const std::filesystem::path& path,const std::string& json){std::ofstream file(path,std::ios::binary|std::ios::trunc);if(!file)return false;file.write(json.data(),static_cast<std::streamsize>(json.size()));return file.good();}
+std::wstring EscapeChatPath(const std::filesystem::path& path){std::wstring out;const std::wstring raw=path.wstring();out.reserve(raw.size()*2);for(const wchar_t c:raw){if(c==L'\\')out+=L"\\\\";else out+=c;}return out;}
+void ExportTitles(GW::HookStatus*,const wchar_t*,int,const LPWSTR*){
+ const auto* world=GW::GetWorldContext();const auto* account=GW::GetAccountContext();const auto* character=GW::GetCharContext();const auto* player=GW::Agents::GetControlledCharacter();
+ if(!world||!account||!character||!player){GW::Chat::WriteChat(GW::Chat::Channel::CHANNEL_WARNING,L"[GWTTT Export] Not in game yet - load a character first.",nullptr,true);return;}
+ account_export::AccountSnapshot s;s.character_name_utf8=WStringToUtf8(character->player_name);s.primary_profession_id=static_cast<uint32_t>(player->primary);s.secondary_profession_id=static_cast<uint32_t>(player->secondary);s.level=player->level;s.map_id=static_cast<uint32_t>(GW::Map::GetMapID());
+ for(uint32_t i=0;i<static_cast<uint32_t>(GW::Constants::TitleID::None);i++){const auto id=static_cast<GW::Constants::TitleID>(i);GW::Title* t=GW::PlayerMgr::GetTitleTrack(id);if(!t)continue;uint32_t current_rank=0,next_rank=0;if(world->title_tiers.valid()){if(t->current_title_tier_index<world->title_tiers.size())current_rank=world->title_tiers[t->current_title_tier_index].tier_number;if(t->next_title_tier_index<world->title_tiers.size())next_rank=world->title_tiers[t->next_title_tier_index].tier_number;}s.titles.push_back({i,t->current_points,t->current_title_tier_index,t->points_needed_current_rank,t->next_title_tier_index,t->points_needed_next_rank,t->max_title_rank,t->max_title_tier_index,current_rank,next_rank,t->is_percentage_based(),t->has_tiers()});}
+ const auto& heroes=world->hero_info;if(heroes.valid()){s.heroes.reserve(heroes.size());for(uint32_t i=0;i<heroes.size();i++){const GW::HeroInfo&h=heroes[i];s.heroes.push_back({static_cast<uint32_t>(h.hero_id),h.level,static_cast<uint32_t>(h.primary),static_cast<uint32_t>(h.secondary)});}}
+ s.unlocked_account_skills=CopyWords(account->unlocked_account_skills);s.learned_character_skills=CopyWords(world->unlocked_character_skills);
+ const std::string json=account_export::BuildAccountJson(s);ImGui::SetClipboardText(json.c_str());const auto path=ExportPath();const bool wrote=WriteJsonFile(path,json);const std::wstring display_path=EscapeChatPath(path);wchar_t message[512];if(wrote)swprintf(message,_countof(message),L"[GWTTT Export] Title JSON copied to clipboard and saved to %ls (%zu title tracks).",display_path.c_str(),s.titles.size());else swprintf(message,_countof(message),L"[GWTTT Export] Title JSON copied to clipboard, but file save FAILED: %ls",display_path.c_str());GW::Chat::WriteChat(wrote?GW::Chat::Channel::CHANNEL_GLOBAL:GW::Chat::Channel::CHANNEL_WARNING,message,nullptr,true);
+}}
+DLLAPI ToolboxPlugin* ToolboxPluginInstance(){static AccountExport instance;return &instance;}
+void AccountExport::Initialize(ImGuiContext*ctx,const ImGuiAllocFns allocator_fns,const HMODULE toolbox_dll){ToolboxPlugin::Initialize(ctx,allocator_fns,toolbox_dll);GW::Chat::CreateCommand(&ChatCmd_HookEntry,L"exporttitles",ExportTitles);}
+void AccountExport::SignalTerminate(){ToolboxPlugin::SignalTerminate();GW::Chat::DeleteCommand(&ChatCmd_HookEntry);}

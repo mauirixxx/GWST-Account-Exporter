@@ -7,13 +7,15 @@ on:
       - main
       - feature/**
       - fix/**
+    tags:
+      - 'v*'
     paths:
       - plugin/**
       - .github/workflows/build-gwtoolbox-plugin.yml
       - .github/pins.env
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -78,3 +80,19 @@ jobs:
           name: GWTTT-TitlesExport
           path: out/
           if-no-files-found: error
+
+      - name: Package release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path out/TitlesExport.dll -DestinationPath "TitlesExport_${{ github.ref_name }}.zip"
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GWTTT Titles Exporter ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            out/TitlesExport.dll
+            TitlesExport_${{ github.ref_name }}.zip
